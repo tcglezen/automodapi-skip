@@ -26,7 +26,10 @@ It accepts the following options:
         any number of times to skip multiple objects.
 
     * ``:skip_regx: str``
-        Description
+        This option results in the
+        specified object, if matching the regular expression being skipped, that is the object will *not* be
+        included in the generated documentation. This option may appear
+        any number of times to skip multiple objects.
 
     * ``:include: str``
         This option is the opposite of :skip: -- if specified, only the object
@@ -35,7 +38,10 @@ It accepts the following options:
         to include multiple objects.
 
     * ``:include_regx: str``
-        Description
+        This option is the opposite of :skip: -- if specified, only the object
+        names that match any of the regular expressions passed to :include_regx: will be included
+        in the generated documentation. This option may appear multiple times
+        to include multiple objects.
 
     * ``:no-main-docstr:``
         If present, the docstring for the module/package will not be generated.
@@ -441,14 +447,13 @@ def _mod_info(modname, toskip=[], skip_regx=[], include=[], include_regx=[], onl
     """
 
     hascls = hasfunc = hasother = False
-
     skips = toskip.copy()
     for localnm, fqnm, obj in zip(*find_mod_objs(modname, onlylocals=onlylocals)):
         if any([re.search(pattern, localnm) for pattern in skip_regx]):
             skips.append(localnm)
-            break
-
-        if (include and localnm not in include) and (any([re.search(pattern, localnm) for pattern in include_regx])) and localnm not in skips:
+        elif include and localnm not in include and localnm not in skips:
+            skips.append(localnm)
+        elif include_regx and not any([re.search(pattern, localnm) for pattern in include_regx]) and localnm not in skips:
             skips.append(localnm)
 
         elif localnm not in toskip:

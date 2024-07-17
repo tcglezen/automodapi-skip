@@ -3,6 +3,9 @@
 About
 =====
 
+This is a fork of the original sphinx-automodapi project by astropy. The github can be found at `https://github.com/astropy/sphinx-automodapi <https://github.com/astropy/sphinx-automodapi>`_
+
+
 This is a Sphinx extension to automatically generate API pages for whole
 modules. It was originally developed for the Astropy project but is now
 available as a standalone package since it can be used for any other
