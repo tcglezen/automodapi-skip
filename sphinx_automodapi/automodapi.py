@@ -31,6 +31,12 @@ It accepts the following options:
         in the generated documentation. This option may appear multiple times
         to include multiple objects.
 
+    * ``:skip_reg: str 
+        Regular expression to dictate which files will *not* be included in the generated documentation. 
+
+    * ``:include_reg: str 
+        Regular expression to dictate which files will be included in the generated documentation. 
+
     * ``:no-main-docstr:``
         If present, the docstring for the module/package will not be generated.
         The function and class tables will still be used, however.
@@ -248,6 +254,8 @@ def automodapi_replace(sourcestr, app, dotoctree=True, docname=None,
             # initialize default options
             toskip = []
             includes = []
+            toskip_reg = []
+            includes_reg = []
             inhdiag = app.config.automodapi_inheritance_diagram
             maindocstr = True
             top_head = True
@@ -265,6 +273,10 @@ def automodapi_replace(sourcestr, app, dotoctree=True, docname=None,
                     toskip.append(args.strip())
                 elif opname == 'include':
                     includes.append(args.strip())
+                elif opname == 'skip_reg':
+                    toskip_reg.append(args.strip())
+                elif opname == 'include_reg':
+                    includes_reg.append(args.strip())
                 elif opname == 'inheritance-diagram':
                     inhdiag = True
                 elif opname == 'no-inheritance-diagram':
@@ -422,7 +434,7 @@ def automodapi_replace(sourcestr, app, dotoctree=True, docname=None,
         return sourcestr
 
 
-def _mod_info(modname, toskip=[], include=[], onlylocals=True):
+def _mod_info(modname, toskip=[], include=[], toskips_reg=[], includes_reg=[], onlylocals=True):
     """
     Determines if a module is a module or a package and whether or not
     it has classes or functions.
@@ -432,10 +444,14 @@ def _mod_info(modname, toskip=[], include=[], onlylocals=True):
 
     skips = toskip.copy()
     for localnm, fqnm, obj in zip(*find_mod_objs(modname, onlylocals=onlylocals)):
-        if include and localnm not in include and localnm not in skips:
+        if include and \
+                localnm not in include and \
+                not any([re.match(include_reg, localnm) for include_reg in includes_reg]) and \
+                localnm not in skips and \
+                not any([re.match(toskip_reg, localnm) for toskip_reg in toskips_reg]):
             skips.append(localnm)
 
-        elif localnm not in toskip:
+        elif localnm not in toskip and not any([re.match(toskip_reg, localnm) for toskip_reg in toskips_reg]):
             hascls = hascls or inspect.isclass(obj)
             hasfunc = hasfunc or inspect.isroutine(obj)
             hasother = hasother or (not inspect.isclass(obj) and
