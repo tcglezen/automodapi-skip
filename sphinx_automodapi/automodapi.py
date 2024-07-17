@@ -1,7 +1,125 @@
 # Licensed under a 3-clause BSD style license - see LICENSE.rst
 """
-[... docstring omitted for brevity ...]
+This directive takes a single argument that must be a module or package. It
+will produce a block of documentation that includes the docstring for the
+package, an :ref:`automodsumm` directive, and an :ref:`automod-diagram` if
+there are any classes in the module. If only the main docstring of the
+module/package is desired in the documentation, use `automodule`_ instead of
+`automodapi`_.
+
+It accepts the following options:
+
+    * ``:include-all-objects:``
+        If present, include not just functions and classes, but all objects.
+        This includes variables, for which a possible docstring after the
+        variable definition will be shown.
+
+    * ``:inheritance-diagram:`` / ``:no-inheritance-diagram:``
+        Specify whether or not to show the inheritance diagram for classes. This
+        overrides the default global configuration set in
+        ``automodapi_inheritance_diagram``.
+
+    * ``:skip: str``
+        This option results in the
+        specified object being skipped, that is the object will *not* be
+        included in the generated documentation. This option may appear
+        any number of times to skip multiple objects.
+
+    * ``:skip_regx: str``
+        Description
+
+    * ``:include: str``
+        This option is the opposite of :skip: -- if specified, only the object
+        names that match any of the names passed to :include: will be included
+        in the generated documentation. This option may appear multiple times
+        to include multiple objects.
+
+    * ``:include_regx: str``
+        Description
+
+    * ``:no-main-docstr:``
+        If present, the docstring for the module/package will not be generated.
+        The function and class tables will still be used, however.
+
+    * ``:headings: str``
+        Specifies the characters (in one string) used as the heading
+        levels used for the generated section. This must have at least 2
+        characters (any after 2 will be ignored). This also *must* match
+        the rest of the documentation on this page for sphinx to be
+        happy. Defaults to "-^", which matches the convention used for
+        Python's documentation, assuming the automodapi call is inside a
+        top-level section (which usually uses '=').
+
+    * ``:no-heading:``
+        If specified do not create a top level heading for the section.
+        That is, do not create a title heading with text like "packagename
+        Package".  The actual docstring for the package/module will still be
+        shown, though, unless ``:no-main-docstr:`` is given.
+
+    * ``:allowed-package-names: str``
+        Specifies the packages that functions/classes documented here are
+        allowed to be from, as comma-separated list of package names. If not
+        given, only objects that are actually in a subpackage of the package
+        currently being documented are included.
+
+    * ``:inherited-members:`` / ``:no-inherited-members:``
+        The global sphinx configuration option
+        ``automodsumm_inherited_members`` decides if members that a class
+        inherits from a base class are included in the generated
+        documentation. The option ``:inherited-members:`` or ``:no-inherited-members:``
+        allows the user to overrride the global setting.
+
+    * ``:noindex:``
+        Propagates the ``noindex`` flag to autodoc. Use it to avoid duplicate
+        objects warnings.
+
+    * ``:sort:``
+        If the module contains ``__all__``, sort the module's objects
+        alphabetically (if ``__all__`` is not present, the objects are found
+        using `dir`, which always gives a sorted list).
+
+
+This extension also adds five sphinx configuration options:
+
+* ``automodapi_inheritance_diagram``
+    Should be a boolean that indicates whether to show inheritance diagrams
+    by default. This can be overriden on a case by case basis with
+    ``:inheritance-diagram:`` and ``:no-inheritance-diagram:``. Defaults to
+    ``True``.
+
+* ``automodapi_toctreedirnm``
+    This must be a string that specifies the name of the directory the
+    automodsumm generated documentation ends up in. This directory path should
+    be relative to the documentation root (e.g., same place as ``index.rst``).
+    Defaults to ``'api'``.
+
+* ``automodapi_writereprocessed``
+    Should be a bool, and if `True`, will cause `automodapi`_ to write files
+    with any `automodapi`_ sections replaced with the content Sphinx
+    processes after `automodapi`_ has run.  The output files are not
+    actually used by sphinx, so this option is only for figuring out the
+    cause of sphinx warnings or other debugging.  Defaults to `False`.
+
+* ``automodsumm_inherited_members``
+    Should be a bool and if ``True`` members that a class inherits from a base
+    class are included in the generated documentation. Defaults to ``False``.
+
+* ``automodsumm_included_members``
+    A list of strings containing the names of hidden class members that should be
+    included in the documentation. This is most commonly used to add special class
+    methods like ``__getitem__`` and ``__setitem__``. Defaults to
+    ``['__init__', '__call__']``.
+
+.. _automodule: http://sphinx-doc.org/latest/ext/autodoc.html?highlight=automodule#directive-automodule
 """
+
+# Implementation note:
+# The 'automodapi' directive is not actually implemented as a docutils
+# directive. Instead, this extension searches for the 'automodapi' text in
+# all sphinx documents, and replaces it where necessary from a template built
+# into this extension. This is necessary because automodsumm (and autosummary)
+# use the "builder-inited" event, which comes before the directives are
+# actually built.
 
 import inspect
 import os
@@ -137,6 +255,7 @@ def automodapi_replace(sourcestr, app, dotoctree=True, docname=None,
             toskip = []
             skip_regx = []
             includes = []
+            includes_regx = []
             inhdiag = app.config.automodapi_inheritance_diagram
             maindocstr = True
             top_head = True
@@ -156,6 +275,8 @@ def automodapi_replace(sourcestr, app, dotoctree=True, docname=None,
                     skip_regx.append(args.strip())
                 elif opname == 'include':
                     includes.append(args.strip())
+                elif opname == 'include_regx':
+                    includes_regx.append(args.strip())
                 elif opname == 'inheritance-diagram':
                     inhdiag = True
                 elif opname == 'no-inheritance-diagram':
@@ -206,7 +327,7 @@ def automodapi_replace(sourcestr, app, dotoctree=True, docname=None,
                     logger.warning(msg, location)
 
             ispkg, hascls, hasfuncs, hasother, toskip = _mod_info(
-                modnm, toskip, skip_regx, includes, onlylocals=onlylocals)
+                modnm, toskip, skip_regx, includes, includes_regx, onlylocals=onlylocals)
 
             # add automodule directive only if no-main-docstr isn't present
             if maindocstr:
@@ -313,54 +434,24 @@ def automodapi_replace(sourcestr, app, dotoctree=True, docname=None,
         return sourcestr
 
 
-def _mod_info(modname, toskip=[], skip_regx=[], include=[], onlylocals=True):
+def _mod_info(modname, toskip=[], skip_regx=[], include=[], include_regx=[], onlylocals=True):
     """
     Determines if a module is a module or a package and whether or not
     it has classes or functions.
-
-    Parameters
-    ----------
-    modname : str
-        The name of the module to analyze.
-    toskip : list, optional
-        A list of names to skip.
-    skip_regx : list, optional
-        A list of regular expression patterns to skip.
-    include : list, optional
-        A list of names to include.
-    onlylocals : bool, optional
-        Whether to include only local objects.
-
-    Returns
-    -------
-    ispkg : bool
-        Whether the module is a package.
-    hascls : bool
-        Whether the module has classes.
-    hasfunc : bool
-        Whether the module has functions.
-    hasother : bool
-        Whether the module has other types of objects.
-    skips : list
-        The final list of objects to skip.
     """
 
     hascls = hasfunc = hasother = False
 
     skips = toskip.copy()
     for localnm, fqnm, obj in zip(*find_mod_objs(modname, onlylocals=onlylocals)):
-        skip = localnm in toskip
-        if not skip:
-            for pattern in skip_regx:
-                if re.match(pattern, localnm):
-                    skips.append(localnm)
-                    skip = True
-                    break
+        if any([re.search(pattern, localnm) for pattern in skip_regx]):
+            skips.append(localnm)
+            break
 
-        if include and localnm not in include and not skip:
+        if (include and localnm not in include) and (any([re.search(pattern, localnm) for pattern in include_regx])) and localnm not in skips:
             skips.append(localnm)
 
-        elif not skip:
+        elif localnm not in toskip:
             hascls = hascls or inspect.isclass(obj)
             hasfunc = hasfunc or inspect.isroutine(obj)
             hasother = hasother or (not inspect.isclass(obj) and
